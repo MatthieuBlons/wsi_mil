@@ -36,7 +36,7 @@ class DatasetSampler:
         """
         equ_vars : nom des variables devant etre équilibré wrt target.
         fix_vars : dictio {variable : fix_value} pour fixer des variables.
-        target : target for classification, used for balancong the dataset
+        target : target for classification, used for balancing the dataset
         """
         self.table = pd.read_csv(table)
         self.target = target
