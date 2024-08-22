@@ -26,6 +26,7 @@ if args.consensus:
         max_per_slides=args.max_per_slides,
         att_thres=300,  # 300 best tiles per WSI based on attention score
     )
+
 else:
     ts = TileSeeker(
         model=args.model,
@@ -34,6 +35,7 @@ else:
         max_per_slides=args.max_per_slides,
         att_thres=300,  # 300 best tiles per WSI based on attention score
     )
+
 ts.forward_all()
 ts.extract_images()
 if args.consensus:
