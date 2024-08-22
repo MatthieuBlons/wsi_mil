@@ -465,7 +465,14 @@ class HeatmapMaker(BaseVisualizer):
         # filling the hooker with mean values
         return tw, logits, info["infomat"]
 
-    def make_heatmap(self, wsi_ID, downsample_factor=16):
+    def make_all(self, out, downsample_factor=16):
+        table = self.table
+        wsi_ID = table["ID"].values
+        for n, o in enumerate(wsi_ID):
+            self.make_heatmap(o, out=out, downsample_factor=downsample_factor)
+        return self
+
+    def make_heatmap(self, wsi_ID, out, downsample_factor=16):
         """
         Generates and saves a heatmap overlay image for the given whole-slide image ID.
 
@@ -489,6 +496,7 @@ class HeatmapMaker(BaseVisualizer):
             np.stack([heatmap for heatmap in heatmaps_per_class.values()])
         )
 
+        # Pre Class HM:
         for target in self.label_encoder.classes_:
             overlay = self.overlay_heatmap_on_thumbnail(
                 wsi_ID,
@@ -498,7 +506,7 @@ class HeatmapMaker(BaseVisualizer):
                 max_over_classes,
                 min_over_classes,
             )
-            overlay.save(f"{wsi_ID}_class_{target}_heatmap.png")
+            overlay.save(os.path.join(out, f"{wsi_ID}_class_{target}_heatmap.png"))
 
         # Attention HM:
         heatmap_normalized, background = self.create_heatmap(infomat, tw)
@@ -510,7 +518,7 @@ class HeatmapMaker(BaseVisualizer):
             np.max(heatmap_normalized),
             np.min(heatmap_normalized),
         )
-        overlay.save(f"{wsi_ID}_attention_heatmap.png")
+        overlay.save(os.path.join(out, f"{wsi_ID}_attention_heatmap.png"))
 
     def create_heatmap(self, infomat, heatmap_scores):
         """
