@@ -16,6 +16,7 @@ from skimage.color import rgb2gray
 from skimage.exposure import histogram
 from skimage._shared.utils import warn
 import openslide
+import timm
 
 from .utils import make_auto_mask, patch_sampling, get_size, visualise_cut, get_image
 
@@ -274,33 +275,44 @@ class ImageTiler:
         model.fc = Identity()
         model = model.to(self.device)
         model.eval()
-        preprocess = self._get_transforms(imagenet=True)
+        preprocess = self._get_transforms(embedding="imagenet")
         mat = self._forward_pass_WSI(model, param_tiles, preprocess)
         np.save(
             os.path.join(self.outpath["tiles"], f"{self.name_wsi}_embedded.npy"), mat
         )
 
-    def _get_transforms(self, imagenet=True):
+    def _get_transforms(self, embedding="imagenet"):
         """_get_transforms.
         For tiling encoding, normalize the input with moments of the
         imagenet distribution or of the training set of the MoCo model.
 
         :param imagenet: bool: use imagenet pretraining.
         """
-        if not imagenet:
+        if embedding == "imagenet":
             trans = transforms.Compose(
                 [
                     transforms.ToTensor(),
                     transforms.Normalize([0.747, 0.515, 0.70], [0.145, 0.209, 0.154]),
                 ]
             )
-        else:
+        elif embedding == "moco":
             trans = transforms.Compose(
                 [
                     transforms.ToTensor(),
                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
                 ]
             )
+        elif embedding == "uni":
+            trans = transforms.Compose(
+                [
+                    transforms.Resize(224),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+                ]
+            )
+        else:
+            raise KeyError(embedding)
+
         return trans
 
     def ciga_tiler(self, param_tiles):
@@ -371,11 +383,39 @@ class ImageTiler:
         model.fc = Identity()
         model = model.to(self.device)
         model.eval()
-        preprocess = self._get_transforms(imagenet=False)
+        preprocess = self._get_transforms(embedding="moco")
         mat = self._forward_pass_WSI(model, param_tiles, preprocess)
         np.save(
-            os.path.join(self.outpath["tiles"], "mat", f"{self.name_wsi}_embedded.npy"),
-            mat,
+            os.path.join(self.outpath["tiles"], f"{self.name_wsi}_embedded.npy"), mat
+        )
+
+    def uni_tiler(self, param_tiles):
+        """uni_tiler.
+        Encodes each tiles thanks to a visual transformer (ViT-L/16 via DINOv2).
+
+        Code for loading the model taken from the Huggin Face repository:
+        https://huggingface.co/MahmoodLab/UNI
+
+        Embeddings are 1024-dimensionnal.
+
+        :param param_tiles: list, output of the patch_sampling.
+        """
+        model = timm.create_model(
+            "vit_large_patch16_224",
+            img_size=self.size,
+            patch_size=16,
+            init_values=1e-5,
+            num_classes=0,
+            dynamic_img_size=True,
+        )
+        checkpoints = torch.load(self.model_path, map_location="cpu")
+        model.load_state_dict(checkpoints, strict=True)
+        model = model.to(self.device)
+        model.eval()
+        preprocess = self._get_transforms(embedding="uni")
+        mat = self._forward_pass_WSI(model, param_tiles, preprocess)
+        np.save(
+            os.path.join(self.outpath["tiles"], f"{self.name_wsi}_embedded.npy"), mat
         )
 
     def simclr_tiler(self, param_tiles):
