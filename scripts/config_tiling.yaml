@@ -1,0 +1,6 @@
+path_wsi: /Users/mblons/dev/project/tipit/data/wsi_mil/image/hes/
+size: 224
+tiler: uni
+model_path: /Users/mblons/dev/project/tipit/data/wsi_mil/models/uni/ckpts/vit_large_patch16_224.dinov2.uni_mass100k/pytorch_model.bin
+level: 2
+path_outputs: /Users/mblons/dev/project/tipit/data/wsi_mil/image/tiles_hes/ 
