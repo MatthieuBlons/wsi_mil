@@ -45,7 +45,7 @@ def get_arguments():
         "--tiler",
         type=str,
         default="simple",
-        help="type of tiler : imagenet | simple | simclr | moco",
+        help="type of tiler : imagenet | simple | simclr | moco | uni | conch | gigapath",
     )
     parser.add_argument(
         "--path_outputs", type=str, help="output folder path", default="."
@@ -54,7 +54,13 @@ def get_arguments():
         "--model_path",
         type=str,
         default=".",
-        help="if using moco, path to the trained resnet",
+        help="if using any of the following pretrained embedders :  moco (resnet) | uni | conch |",
+    )
+    parser.add_argument(
+        "--HF_TOKEN",
+        type=str,
+        default=None,
+        help="if using gigapath set the HF_TOKEN environment variable to your Hugging Face API token",
     )
     parser.add_argument("--mask_tolerance", type=float, default=0.75)
 
