@@ -20,6 +20,8 @@ else:
     for f in files:
         args.path_wsi = f
         it = ImageTiler(args=args)
+        if args.HF_TOKEN:
+            os.environ["HF_TOKEN"] = args.HF_TOKEN
         it.tile_image()
 
 # PCA
