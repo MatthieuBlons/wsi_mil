@@ -17,6 +17,7 @@ from skimage.exposure import histogram
 from skimage._shared.utils import warn
 import openslide
 import timm
+from conch.open_clip_custom import create_model_from_pretrained
 
 from .utils import make_auto_mask, patch_sampling, get_size, visualise_cut, get_image
 
@@ -259,7 +260,12 @@ class ImageTiler:
             image = preprocess(image).unsqueeze(0)
             image = image.to(self.device)
             with torch.no_grad():
-                t = model(image).squeeze()
+                if self.tiler == "conch":
+                    t = model.encode_image(
+                        image, proj_contrast=False, normalize=False
+                    ).squeeze()
+                else:
+                    t = model(image).squeeze()
             tiles.append(t.cpu().numpy())
         mat = np.vstack(tiles)
         return mat
@@ -306,6 +312,17 @@ class ImageTiler:
             trans = transforms.Compose(
                 [
                     transforms.Resize(224),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+                ]
+            )
+        elif embedding == "gigapath":
+            trans = transforms.Compose(
+                [
+                    transforms.Resize(
+                        256, interpolation=transforms.InterpolationMode.BICUBIC
+                    ),
+                    transforms.CenterCrop(224),
                     transforms.ToTensor(),
                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
                 ]
@@ -410,9 +427,56 @@ class ImageTiler:
         )
         checkpoints = torch.load(self.model_path, map_location="cpu")
         model.load_state_dict(checkpoints, strict=True)
+        print("UNI model successfully built")
         model = model.to(self.device)
         model.eval()
         preprocess = self._get_transforms(embedding="uni")
+        mat = self._forward_pass_WSI(model, param_tiles, preprocess)
+        np.save(
+            os.path.join(self.outpath["tiles"], f"{self.name_wsi}_embedded.npy"), mat
+        )
+
+    def conch_tiler(self, param_tiles):
+        """conch_tiler.
+        Encodes each tiles thanks to a visual transformer (ViT-B/16 via DINOv2).
+
+        Code for loading the model taken from the Huggin Face repository:
+        https://huggingface.co/MahmoodLab/CONCH
+
+        Embeddings are 512-dimensionnal.
+
+        :param param_tiles: list, output of the patch_sampling.
+        """
+        model, preprocess = create_model_from_pretrained(
+            "conch_ViT-B-16", self.model_path, force_image_size=224
+        )
+        print("CONCH model successfully built")
+        model = model.to(self.device)
+        model.eval()
+        mat = self._forward_pass_WSI(model, param_tiles, preprocess)
+        np.save(
+            os.path.join(self.outpath["tiles"], f"{self.name_wsi}_embedded.npy"), mat
+        )
+
+    def gigapath_tiler(self, param_tiles):
+        """gigapath_tiler.
+        Encodes each tiles thanks to a visual transformer.
+
+        Code for loading the model taken from the Huggin Face repository:
+        https://huggingface.co/prov-gigapath/prov-gigapath
+
+        Embeddings are 1536-dimensionnal.
+
+        :param param_tiles: list, output of the patch_sampling.
+        """
+        assert (
+            "HF_TOKEN" in os.environ
+        ), "Please set the HF_TOKEN environment variable to your Hugging Face API token"
+        model = timm.create_model("hf_hub:prov-gigapath/prov-gigapath", pretrained=True)
+        print("Giga-Path successfully loaded from the Hugging Face Hub")
+        model = model.to(self.device)
+        model.eval()
+        preprocess = self._get_transforms(embedding="gigapath")
         mat = self._forward_pass_WSI(model, param_tiles, preprocess)
         np.save(
             os.path.join(self.outpath["tiles"], f"{self.name_wsi}_embedded.npy"), mat
