@@ -154,7 +154,7 @@ def main(raw_args=None):
         # metrics = convert_flatten(metrics) I flattened the metrics directly in the models.py file
         references.update(metrics)
         rows.append(references)
-
+    
     ref_metric = (
         args_m.ref_metric
     )  # extract the reference from one of the models args (last one)
