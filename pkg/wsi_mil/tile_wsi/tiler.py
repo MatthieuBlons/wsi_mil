@@ -43,33 +43,42 @@ class ImageTiler:
 
     def __init__(self, args, make_info=True):
         self.level = args.level  # Level to which sample patch.
-        self.nf = args.nf  # Useful for managing the outputs
         self.device = args.device
         self.size = (args.size, args.size)
-        self.path_wsi = args.path_wsi
         self.max_nb_tiles = args.max_nb_tiles
+        self.infomat = None
+        self.tiler = args.tiler
+        self.model_path = args.model_path
+        self.img_tiler = getattr(self, self.tiler + "_tiler")
+        if self.tiler != "simple":
+            self.model, self.preprocess = self.img_tiler()
+            print(f"{self.tiler}_tiler was successfully built!")
         self.path_outputs = os.path.join(
             args.path_outputs, args.tiler, f"level_{args.level}"
         )
-        self.auto_mask = args.auto_mask
-        self.path_mask = args.path_mask
-        self.model_path = args.model_path
-        self.infomat = None
-        self.tiler = args.tiler
-        self.name_wsi, self.ext_wsi = os.path.splitext(os.path.basename(self.path_wsi))
         # If nf is used, it manages the output paths.
-        self.outpath = self._set_out_path()
-        self.slide = openslide.open_slide(self.path_wsi)
+        self.nf = args.nf  # Useful for managing the outputs
         self.make_info = make_info
-        if args.mask_level < 0:
-            self.mask_level = self.slide.level_count + args.mask_level
-        else:
-            self.mask_level = args.mask_level
+
+    def _load_slide(self, path_wsi, mask_args):
+        self.path_wsi = path_wsi
+        self.name_wsi, self.ext_wsi = os.path.splitext(os.path.basename(self.path_wsi))
+        self.slide = openslide.open_slide(self.path_wsi)
+        self._get_mask_info(mask_args)
         self.rgb_img = self.slide.get_thumbnail(
             self.slide.level_dimensions[self.mask_level]
         )
         self.rgb_img = np.array(self.rgb_img)[:, :, :3]
-        self.mask_tolerance = args.mask_tolerance
+        self.outpath = self._set_out_path()
+
+    def _get_mask_info(self, mask_args):
+        self.auto_mask = mask_args.auto_mask
+        self.path_mask = mask_args.path_mask
+        if mask_args.mask_level < 0:
+            self.mask_level = self.slide.level_count + mask_args.mask_level
+        else:
+            self.mask_level = mask_args.mask_level
+        self.mask_tolerance = mask_args.mask_tolerance
 
     def _set_out_path(self):
         """_set_out_path. Sets the path to store the outputs of the tiling.
@@ -111,7 +120,6 @@ class ImageTiler:
         WSI of origin is specified when initializing TileImage.
         """
         self.mask_function = self._get_mask_function()
-        tiler = getattr(self, self.tiler + "_tiler")
         param_tiles = patch_sampling(
             slide=self.slide,
             mask_level=self.mask_level,
@@ -123,7 +131,15 @@ class ImageTiler:
         if self.make_info:
             self._make_infodocs(param_tiles)
             self._make_visualisations(param_tiles)
-        tiler(param_tiles)
+
+        if self.tiler == "simple":
+            self.img_tiler(param_tiles)
+        else:
+            mat = self._forward_pass_WSI(self.model, param_tiles, self.preprocess)
+            np.save(
+                os.path.join(self.outpath["tiles"], f"{self.name_wsi}_embedded.npy"),
+                mat,
+            )
 
     def _make_visualisations(self, param_tiles):
         """_make_visualisations.
@@ -228,23 +244,6 @@ class ImageTiler:
         ) as f:
             pickle.dump(infodict, f)
 
-    def simple_tiler(self, param_tiles):
-        """simple_tiler.
-        Simply writes tiles as .png
-
-        :param param_tiles: list: output of the patch_sampling.
-        """
-        if self.max_nb_tiles is not None:
-            n = min(self.max_nb_tiles, len(param_tiles))
-            param_tiles = np.array(param_tiles)[
-                np.random.choice(range(len(param_tiles)), n, replace=False)
-            ]
-        for o, para in enumerate(param_tiles):
-            patch = get_image(slide=self.path_wsi, para=para, numpy=False)
-            path_tile = os.path.join(self.outpath["tiles"], f"tile_{o}.png")
-            patch.save(path_tile)
-            del patch
-
     def _forward_pass_WSI(self, model, param_tiles, preprocess):
         """_forward_pass_WSI. Feeds a pre-trained model, already loaded,
         with the extracted tiles.
@@ -270,23 +269,6 @@ class ImageTiler:
         mat = np.vstack(tiles)
         return mat
 
-    def imagenet_tiler(self, param_tiles):
-        """imagenet_tiler.
-        Encodes each tiles thanks to a resnet18 pretrained on Imagenet.
-        Embeddings are 512-dimensionnal.
-
-        :param param_tiles: list, output of the patch_sampling.
-        """
-        model = resnet18(weights="IMAGENET1K_V1")
-        model.fc = Identity()
-        model = model.to(self.device)
-        model.eval()
-        preprocess = self._get_transforms(embedding="imagenet")
-        mat = self._forward_pass_WSI(model, param_tiles, preprocess)
-        np.save(
-            os.path.join(self.outpath["tiles"], f"{self.name_wsi}_embedded.npy"), mat
-        )
-
     def _get_transforms(self, embedding="imagenet"):
         """_get_transforms.
         For tiling encoding, normalize the input with moments of the
@@ -311,7 +293,6 @@ class ImageTiler:
         elif embedding == "uni":
             trans = transforms.Compose(
                 [
-                    transforms.Resize(224),
                     transforms.ToTensor(),
                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
                 ]
@@ -319,18 +300,53 @@ class ImageTiler:
         elif embedding == "gigapath":
             trans = transforms.Compose(
                 [
-                    transforms.Resize(
-                        256, interpolation=transforms.InterpolationMode.BICUBIC
-                    ),
-                    transforms.CenterCrop(224),
                     transforms.ToTensor(),
                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+                ]
+            )
+
+        elif embedding == "ciga":
+            trans = transforms.Compose(
+                [
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
                 ]
             )
         else:
             raise KeyError(embedding)
 
         return trans
+
+    def simple_tiler(self, param_tiles):
+        """simple_tiler.
+        Simply writes tiles as .png
+
+        :param param_tiles: list: output of the patch_sampling.
+        """
+        if self.max_nb_tiles is not None:
+            n = min(self.max_nb_tiles, len(param_tiles))
+            param_tiles = np.array(param_tiles)[
+                np.random.choice(range(len(param_tiles)), n, replace=False)
+            ]
+        for o, para in enumerate(param_tiles):
+            patch = get_image(slide=self.path_wsi, para=para, numpy=False)
+            path_tile = os.path.join(self.outpath["tiles"], f"tile_{o}.png")
+            patch.save(path_tile)
+            del patch
+
+    def imagenet_tiler(self):
+        """imagenet_tiler.
+        Encodes each tiles thanks to a resnet18 pretrained on Imagenet.
+        Embeddings are 512-dimensionnal.
+        """
+        model = resnet18(weights="IMAGENET1K_V1")
+        model.fc = Identity()
+        model = model.to(self.device)
+        model.eval()
+        print("Imagenet model built!")
+        preprocess = self._get_transforms(embedding=self.tiler)
+
+        return model, preprocess
 
     def ciga_tiler(self, param_tiles):
         def load_model_weights(model, weights):
@@ -353,12 +369,9 @@ class ImageTiler:
         model.fc = Identity()
         model = model.to(self.device)
         model.eval()
-        preprocess = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
-            ]
-        )
+        print("Ciga model built!")
+        preprocess = self._get_transforms(embedding=self.tiler)
+
         tiles = []
         # param_tiles = np.array(param_tiles)[np.random.choice(range(len(param_tiles)), min(4000,len(param_tiles)), replace=False)]
         for o, para in enumerate(param_tiles):
@@ -377,14 +390,12 @@ class ImageTiler:
             mat,
         )
 
-    def moco_tiler(self, param_tiles):
+    def moco_tiler(self):
         """moco_tiler.
         Encodes each tiles thanks to a resnet18 pretrained with MoCo.
 
         Code for loading the model taken from the MoCo official package:
         https://github.com/facebookresearch/moco
-
-        :param param_tiles: list, output of the patch_sampling.
         """
         model = resnet18()
         checkpoint = torch.load(self.model_path, map_location="cpu")
@@ -400,13 +411,12 @@ class ImageTiler:
         model.fc = Identity()
         model = model.to(self.device)
         model.eval()
-        preprocess = self._get_transforms(embedding="moco")
-        mat = self._forward_pass_WSI(model, param_tiles, preprocess)
-        np.save(
-            os.path.join(self.outpath["tiles"], f"{self.name_wsi}_embedded.npy"), mat
-        )
+        print("MoCo model built!")
+        preprocess = self._get_transforms(embedding=self.tiler)
 
-    def uni_tiler(self, param_tiles):
+        return model, preprocess
+
+    def uni_tiler(self):
         """uni_tiler.
         Encodes each tiles thanks to a visual transformer (ViT-L/16 via DINOv2).
 
@@ -415,7 +425,6 @@ class ImageTiler:
 
         Embeddings are 1024-dimensionnal.
 
-        :param param_tiles: list, output of the patch_sampling.
         """
         model = timm.create_model(
             "vit_large_patch16_224",
@@ -427,16 +436,15 @@ class ImageTiler:
         )
         checkpoints = torch.load(self.model_path, map_location="cpu")
         model.load_state_dict(checkpoints, strict=True)
-        print("UNI model successfully built")
+        # print("UNI model successfully built")
         model = model.to(self.device)
         model.eval()
-        preprocess = self._get_transforms(embedding="uni")
-        mat = self._forward_pass_WSI(model, param_tiles, preprocess)
-        np.save(
-            os.path.join(self.outpath["tiles"], f"{self.name_wsi}_embedded.npy"), mat
-        )
+        print("UNI model built!")
+        preprocess = self._get_transforms(embedding=self.tiler)
 
-    def conch_tiler(self, param_tiles):
+        return model, preprocess
+
+    def conch_tiler(self):
         """conch_tiler.
         Encodes each tiles thanks to a visual transformer (ViT-B/16 via DINOv2).
 
@@ -445,20 +453,17 @@ class ImageTiler:
 
         Embeddings are 512-dimensionnal.
 
-        :param param_tiles: list, output of the patch_sampling.
         """
         model, preprocess = create_model_from_pretrained(
             "conch_ViT-B-16", self.model_path, force_image_size=224
         )
-        print("CONCH model successfully built")
         model = model.to(self.device)
         model.eval()
-        mat = self._forward_pass_WSI(model, param_tiles, preprocess)
-        np.save(
-            os.path.join(self.outpath["tiles"], f"{self.name_wsi}_embedded.npy"), mat
-        )
+        print("CONCH model built!")
 
-    def gigapath_tiler(self, param_tiles):
+        return model, preprocess
+
+    def gigapath_tiler(self):
         """gigapath_tiler.
         Encodes each tiles thanks to a visual transformer.
 
@@ -467,20 +472,17 @@ class ImageTiler:
 
         Embeddings are 1536-dimensionnal.
 
-        :param param_tiles: list, output of the patch_sampling.
         """
         assert (
             "HF_TOKEN" in os.environ
         ), "Please set the HF_TOKEN environment variable to your Hugging Face API token"
         model = timm.create_model("hf_hub:prov-gigapath/prov-gigapath", pretrained=True)
-        print("Giga-Path successfully loaded from the Hugging Face Hub")
         model = model.to(self.device)
         model.eval()
-        preprocess = self._get_transforms(embedding="gigapath")
-        mat = self._forward_pass_WSI(model, param_tiles, preprocess)
-        np.save(
-            os.path.join(self.outpath["tiles"], f"{self.name_wsi}_embedded.npy"), mat
-        )
+        print("Giga-Path model built!")
+        preprocess = self._get_transforms(embedding=self.tiler)
+
+        return model, preprocess
 
     def simclr_tiler(self, param_tiles):
         raise NotImplementedError

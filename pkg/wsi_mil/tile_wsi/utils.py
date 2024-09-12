@@ -99,7 +99,7 @@ def visualise_cut(
         axes.add_patch(patch)
     axes.set_title(plot_args["title"], size=20)
     axes.axis("off")
-    plt.show()
+    # plt.show()
 
 
 def get_image(slide, para, numpy=True):

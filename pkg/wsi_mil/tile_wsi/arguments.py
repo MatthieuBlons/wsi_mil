@@ -29,7 +29,7 @@ def get_arguments():
         "--level",
         type=int,
         default=1,
-        help="scale to which downsample. I.e a scale of 2 means dimensions divided by 2^2",
+        help="scale to which downsample. I.e a scale of s means dimensions divided by s^2",
     )
     parser.add_argument(
         "--mask_level",
@@ -75,6 +75,7 @@ def get_arguments():
         help="maximum number of tiles to select uniformly. If None, takes all the tiles.",
         default=None,
     )
+
     args = parser.parse_args()
     # If there is a config file, we populate args with it (still keeping the default arguments)
     if args.config is not None:
@@ -82,7 +83,17 @@ def get_arguments():
             dic = yaml.safe_load(f)
         args.__dict__.update(dic)
     # Set device
-    # args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     args.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-
-    return args
+    # creat a mask_args object
+    mask_args = type(
+        "mask_args",
+        (object,),
+        {
+            "auto_mask": args.auto_mask,
+            "path_mask": args.path_mask,
+            "mask_level": args.mask_level,
+            "mask_tolerance": args.mask_tolerance,
+        },
+    )
+    return args, mask_args
