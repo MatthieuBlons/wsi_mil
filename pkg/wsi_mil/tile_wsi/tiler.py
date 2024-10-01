@@ -9,15 +9,22 @@ import numpy as np
 import openslide
 import useful_wsi as usi
 
-print(f"Working in conda env = {os.environ["CONDA_PREFIX"]}")
-if os.environ["CONDA_PREFIX"] == "/Users/mblons/miniforge3/envs/ctranspath-env":
+
+if os.environ["CONDA_PREFIX"] == "/cluster/CBIO/home/mblons/miniconda3/envs/ctranspath":
     from .networks import ctranspath
-elif os.environ["CONDA_PREFIX"] == "/Users/mblons/miniforge3/envs/conch-env":
+elif os.environ["CONDA_PREFIX"] == "/cluster/CBIO/home/mblons/miniconda3/envs/conch":
     from .networks import conch
 else:
     from .networks import uni, imagenet, moco, gigapath
 
-from .utils import make_auto_mask, patch_sampling, get_size, visualise_cut, get_image, get_polygon
+from .utils import (
+    make_auto_mask,
+    patch_sampling,
+    get_size,
+    visualise_cut,
+    get_image,
+    get_polygon,
+)
 
 # TODO Ajouter name_slide dans les infos
 
@@ -436,7 +443,7 @@ class ImageTiler:
         Embeddings are 1024-dimensionnal.
         """
         model = uni()
-        checkpoints = torch.load(self.model_path, map_location="cpu")
+        checkpoints = torch.load(self.model_path, map_location="cpu", weights_only=True)
         model.load_state_dict(checkpoints, strict=True)
         model = model.to(self.device)
         model.eval()
@@ -470,7 +477,7 @@ class ImageTiler:
         """
         model = gigapath()
         if not "HF_TOKEN" in os.environ:
-            checkpoints = torch.load(self.model_path, map_location="cpu")
+            checkpoints = torch.load(self.model_path, map_location="cpu", weights_only=True)
             model.load_state_dict(checkpoints, strict=True)
         model = model.to(self.device)
         model.eval()
@@ -492,7 +499,7 @@ class ImageTiler:
 
         model = ctranspath()
         model.head = Identity()
-        checkpoints = torch.load(self.model_path, map_location="cpu")
+        checkpoints = torch.load(self.model_path, map_location="cpu", weights_only=True)
         model.load_state_dict(checkpoints["model"], strict=True)
         model = model.to(self.device)
         model.eval()

@@ -3,9 +3,9 @@ import timm
 import torch.nn as nn
 from torchvision.models import resnet18
 
-if os.environ["CONDA_PREFIX"] == "/Users/mblons/miniforge3/envs/conch-env":
+if os.environ["CONDA_PREFIX"] == "/cluster/CBIO/home/mblons/miniconda3/envs/conch":
     from conch.open_clip_custom import create_model_from_pretrained
-if os.environ["CONDA_PREFIX"] == "/Users/mblons/miniforge3/envs/ctranspath-env":
+if os.environ["CONDA_PREFIX"] == "/cluster/CBIO/home/mblons/miniconda3/envs/ctranspath":
     from timm.models.layers.helpers import to_2tuple
 
 

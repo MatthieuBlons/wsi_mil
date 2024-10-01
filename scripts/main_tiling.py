@@ -8,6 +8,14 @@ from tqdm import tqdm
 from trackers import timetracker
 import copy
 import yaml
+import torch
+
+print("Working in conda env = " + os.environ["CONDA_PREFIX"])
+print(f"Cuda is available = {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    print(f"Device = {torch.cuda.get_device_name(0)}")
+else:
+    print("Device = cpu")
 
 args, mask_args = get_arguments()
 timer = timetracker(name="tracker", verbose=1)
