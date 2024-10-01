@@ -29,7 +29,7 @@ from PIL import Image
 class BaseVisualizer(ABC):
     def __init__(self, model, path_emb=None, path_raw=None):
         ## Model loading
-        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu") # change 
+        self.device = torch.device("cuda" if torch.backends.mps.is_available() else "cpu") # change 
         self.model = load_model(model, self.device)
         self.label_encoder = self.model.label_encoder
 

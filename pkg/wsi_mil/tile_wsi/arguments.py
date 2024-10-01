@@ -83,8 +83,7 @@ def get_arguments():
             dic = yaml.safe_load(f)
         args.__dict__.update(dic)
     # Set device
-    # args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    args.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # creat a mask_args object
     mask_args = type(
         "mask_args",
