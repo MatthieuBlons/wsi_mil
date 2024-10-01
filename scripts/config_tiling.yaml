@@ -1,6 +1,40 @@
-path_wsi: /Users/mblons/dev/project/tipit/data/wsi_mil/image/hes/
-size: 224
-tiler: uni
-model_path: /Users/mblons/dev/project/tipit/data/wsi_mil/models/uni/ckpts/vit_large_patch16_224.dinov2.uni_mass100k/pytorch_model.bin
-level: 2
-path_outputs: /Users/mblons/dev/project/tipit/data/wsi_mil/image/tiles_hes/ 
+path_wsi: /Users/mblons/dev/project/tipit/data/pathology/image/hes/wsi
+path_outputs: /Users/mblons/dev/project/tipit/data/pathology/image/hes/tiles/ 
+
+# tiler is either:
+#  simple | imagenet | ciga (Need to refactor ciga_tiler) (need --model_path) | simclr (Not Implemented) | moco (need --model_path) | uni (need --model_path)  | conch (need --model_path)  | gigapath (need --HF_TOOKEN) 
+
+#tiler: simple 
+#level: 1
+#size: 224
+
+#tiler: imagenet 
+#level: 2
+#size: 224
+
+#tiler: moco 
+#model_path: /Users/mblons/dev/project/tipit/data/wsi_mil/models/moco/ckpts/pytorch_model.bin
+#level: 1
+#size: 224
+
+#tiler: uni 
+#model_path: /Users/mblons/dev/project/tipit/data/wsi_mil/models/uni/ckpts/pytorch_model.bin
+#level: 1
+#size: 224
+
+#tiler: conch 
+#model_path: /Users/mblons/dev/project/tipit/data/wsi_mil/models/conch/ckpts/pytorch_model.bin
+#level: 1
+#size: 224
+
+#tiler: gigapath 
+#HF_TOKEN: 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
+#model_path: /Users/mblons/dev/project/tipit/data/wsi_mil/models/gigapath/ckpts/pytorch_model.bin
+#level: 1
+#size: 224
+
+#tiler: ctranspath 
+#model_path: /Users/mblons/dev/project/tipit/data/wsi_mil/models/ctranspath/ckpts/ctranspath.pth
+#level: 2
+#size: 224
+

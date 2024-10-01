@@ -1,14 +1,16 @@
-wsi: /path/to/the/output/folder/of/main/tiling/tiler/level_n/
-raw_path: /path/to/raw/wsi/data
-table_data: /path/to/master/table.csv
+wsi: /Users/mblons/dev/project/tipit/data/pathology/image/hes/tiles/imagenet/level_2/
+raw_path: /Users/mblons/dev/project/tipit/data/pathology/image/hes/wsi
+table_data: /Users/mblons/dev/project/tipit/data/wsi_mil/label/hes_tipit_1y_death_mastertable_censored_092024.csv
 batch_size: 16
 dropout: 0.4
 feature_depth: 512 
 lr: 0.003
-num_workers: 16
+num_workers: 0
 model_name: mhmc_layers
-nb_tiles: 10
-epochs: 2
-target_name: target
-ref_metric: loss
+criterion: 'nll' #bce raises ValueError
+nb_tiles: 450
+epochs: 200
+target_name: OS.oneyear
+ref_metric: roc_auc
+
 
