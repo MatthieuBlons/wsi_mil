@@ -1,7 +1,6 @@
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 import pandas as pd
 import torch
-import os
 import copy
 import yaml
 
@@ -157,8 +156,6 @@ def get_arguments(raw_args=None, train=True, config=None):
             dic = yaml.safe_load(f)
         args.__dict__.update(dic)
 
-    # table = pd.read_csv(os.path.join(args.wsi, 'table_data.csv'))
-    # args.table_data = table
     table = pd.read_csv(args.table_data)
     args.num_class = len(set(table[args.target_name]))
     args.train = train

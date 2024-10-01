@@ -16,7 +16,7 @@ from skimage.morphology import square, closing, opening
 from skimage.filters import threshold_otsu
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
-
+import warnings
 
 def get_polygon(image, path_xml):
     """get_polygon.

@@ -4,7 +4,6 @@ from glob import glob
 from argparse import ArgumentParser
 import hdbscan
 import matplotlib.pyplot as plt
-from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from sklearn import preprocessing
 import seaborn as sns
 import numpy as np
@@ -12,8 +11,6 @@ import numpy as np
 np.random.seed(42)
 from argparse import ArgumentParser
 import os
-import pandas as pd
-from PIL import Image
 
 
 def set_axes_color(ax, color="orange"):

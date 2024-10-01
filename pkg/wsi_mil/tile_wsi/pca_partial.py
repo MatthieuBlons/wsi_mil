@@ -3,18 +3,19 @@ import numpy as np
 from tqdm import tqdm
 import argparse
 from glob import glob
-from joblib import load, dump
+from joblib import dump
 import os
 
+
 def check_dim(batch):
-    """ Checks if batch is big enough for the incremental PCA to be 
+    """Checks if batch is big enough for the incremental PCA to be
     efficient.
-    
+
     Parameters
     ----------
     batch : list
         list of matrix, each matrix corresponding to a WSI divided in $row tiles
-    
+
     Returns
     -------
     bool
@@ -28,18 +29,24 @@ def check_dim(batch):
         ans = False
     return ans
 
+
 def get_files(path):
-    files = glob(os.path.join(path, 'mat', '*.npy'))
+    files = glob(os.path.join(path, "mat", "*.npy"))
     return files
+
 
 def main(raw_args=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--path", type = str, default=".", help="path to the files of tiles")
+    parser.add_argument(
+        "--path", type=str, default=".", help="path to the files of tiles"
+    )
     args = parser.parse_args(raw_args)
-    files = get_files(args.path) 
+    files = get_files(args.path)
     ipca = IncrementalPCA()
     batch = []
-    for path in tqdm(files):
+    fitcnt = 0
+    iterpath = tqdm(files, desc="Fit PCA", unit="wsi", leave=True)
+    for path in iterpath:
         mat = np.load(path)
         if len(mat.shape) == 1:
             mat = np.expand_dims(mat, 0)
@@ -49,19 +56,21 @@ def main(raw_args=None):
             batch = np.vstack(batch)
             ipca.partial_fit(X=batch)
             batch = []
+            fitcnt += 1
         else:
             batch.append(mat)
-
+    if fitcnt < 1:
+        raise SystemExit("not enough tiles to fit the incremental PCA!")
     msg = " ----------------  RESULTS -------------------- \n"
     s = 0
-    for i,o in enumerate(ipca.explained_variance_ratio_, 1):
+    for i, o in enumerate(ipca.explained_variance_ratio_, 1):
         s += o
-        msg += "Dimensions until {} explains {}% of the variance \n".format(i, s*100)
+        msg += "Dimensions until {} explains {}% of the variance \n".format(i, s * 100)
     msg += "----------------------------------------------"
 
     ## Saving
-    with open('./pca/results.txt', 'w') as f:
+    with open("./pca/results.txt", "w") as f:
         f.write(msg)
 
-    dump(ipca, 'pca/pca_tiles.joblib')
+    dump(ipca, "pca/pca_tiles.joblib")
     return ipca
