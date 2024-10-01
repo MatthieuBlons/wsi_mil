@@ -1,25 +1,23 @@
-from glob import glob
-from argparse import ArgumentParser
-from torchvision.models import resnet50, resnet18, resnext50_32x4d
 from torchvision import transforms
 from torch.nn import Identity
 import torch
+from torchvision.models import resnet18
 import pandas as pd
 import pickle
 import os
 import numpy as np
-from PIL import Image
-from xml.dom import minidom
-from skimage.draw import polygon
-from skimage.morphology import dilation
-from skimage.color import rgb2gray
-from skimage.exposure import histogram
-from skimage._shared.utils import warn
 import openslide
-import timm
-from conch.open_clip_custom import create_model_from_pretrained
+import useful_wsi as usi
 
-from .utils import make_auto_mask, patch_sampling, get_size, visualise_cut, get_image
+print(f"Working in conda env = {os.environ["CONDA_PREFIX"]}")
+if os.environ["CONDA_PREFIX"] == "/Users/mblons/miniforge3/envs/ctranspath-env":
+    from .networks import ctranspath
+elif os.environ["CONDA_PREFIX"] == "/Users/mblons/miniforge3/envs/conch-env":
+    from .networks import conch
+else:
+    from .networks import uni, imagenet, moco, gigapath
+
+from .utils import make_auto_mask, patch_sampling, get_size, visualise_cut, get_image, get_polygon
 
 # TODO Ajouter name_slide dans les infos
 
@@ -56,6 +54,7 @@ class ImageTiler:
         self.path_outputs = os.path.join(
             args.path_outputs, args.tiler, f"level_{args.level}"
         )
+        os.makedirs(self.path_outputs, exist_ok=True)
         # If nf is used, it manages the output paths.
         self.nf = args.nf  # Useful for managing the outputs
         self.make_info = make_info
@@ -255,7 +254,7 @@ class ImageTiler:
         tiles = []
         for o, para in enumerate(param_tiles):
             image = get_image(slide=self.slide, para=para, numpy=False)
-            image = image.convert("RGB")
+            image = image.convert("RGB")  # NCHW
             image = preprocess(image).unsqueeze(0)
             image = image.to(self.device)
             with torch.no_grad():
@@ -279,6 +278,7 @@ class ImageTiler:
         if embedding == "imagenet":
             trans = transforms.Compose(
                 [
+                    transforms.CenterCrop(self.size[0]),
                     transforms.ToTensor(),
                     transforms.Normalize([0.747, 0.515, 0.70], [0.145, 0.209, 0.154]),
                 ]
@@ -286,6 +286,7 @@ class ImageTiler:
         elif embedding == "moco":
             trans = transforms.Compose(
                 [
+                    transforms.CenterCrop(self.size[0]),
                     transforms.ToTensor(),
                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
                 ]
@@ -293,6 +294,7 @@ class ImageTiler:
         elif embedding == "uni":
             trans = transforms.Compose(
                 [
+                    transforms.CenterCrop(self.size[0]),
                     transforms.ToTensor(),
                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
                 ]
@@ -300,6 +302,16 @@ class ImageTiler:
         elif embedding == "gigapath":
             trans = transforms.Compose(
                 [
+                    transforms.CenterCrop(self.size[0]),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+                ]
+            )
+
+        elif embedding == "ctranspath":
+            trans = transforms.Compose(
+                [
+                    transforms.CenterCrop(self.size[0]),
                     transforms.ToTensor(),
                     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
                 ]
@@ -339,7 +351,7 @@ class ImageTiler:
         Encodes each tiles thanks to a resnet18 pretrained on Imagenet.
         Embeddings are 512-dimensionnal.
         """
-        model = resnet18(weights="IMAGENET1K_V1")
+        model = imagenet()
         model.fc = Identity()
         model = model.to(self.device)
         model.eval()
@@ -393,11 +405,10 @@ class ImageTiler:
     def moco_tiler(self):
         """moco_tiler.
         Encodes each tiles thanks to a resnet18 pretrained with MoCo.
-
         Code for loading the model taken from the MoCo official package:
         https://github.com/facebookresearch/moco
         """
-        model = resnet18()
+        model = moco()
         checkpoint = torch.load(self.model_path, map_location="cpu")
         # rename moco pre-trained keys
         state_dict = checkpoint["state_dict"]
@@ -419,24 +430,14 @@ class ImageTiler:
     def uni_tiler(self):
         """uni_tiler.
         Encodes each tiles thanks to a visual transformer (ViT-L/16 via DINOv2).
-
         Code for loading the model taken from the Huggin Face repository:
         https://huggingface.co/MahmoodLab/UNI
 
         Embeddings are 1024-dimensionnal.
-
         """
-        model = timm.create_model(
-            "vit_large_patch16_224",
-            img_size=self.size,
-            patch_size=16,
-            init_values=1e-5,
-            num_classes=0,
-            dynamic_img_size=True,
-        )
+        model = uni()
         checkpoints = torch.load(self.model_path, map_location="cpu")
         model.load_state_dict(checkpoints, strict=True)
-        # print("UNI model successfully built")
         model = model.to(self.device)
         model.eval()
         print("UNI model built!")
@@ -447,16 +448,12 @@ class ImageTiler:
     def conch_tiler(self):
         """conch_tiler.
         Encodes each tiles thanks to a visual transformer (ViT-B/16 via DINOv2).
-
         Code for loading the model taken from the Huggin Face repository:
         https://huggingface.co/MahmoodLab/CONCH
 
         Embeddings are 512-dimensionnal.
-
         """
-        model, preprocess = create_model_from_pretrained(
-            "conch_ViT-B-16", self.model_path, force_image_size=224
-        )
+        model, preprocess = conch(self.model_path)
         model = model.to(self.device)
         model.eval()
         print("CONCH model built!")
@@ -466,22 +463,41 @@ class ImageTiler:
     def gigapath_tiler(self):
         """gigapath_tiler.
         Encodes each tiles thanks to a visual transformer.
-
         Code for loading the model taken from the Huggin Face repository:
         https://huggingface.co/prov-gigapath/prov-gigapath
 
         Embeddings are 1536-dimensionnal.
-
         """
-        assert (
-            "HF_TOKEN" in os.environ
-        ), "Please set the HF_TOKEN environment variable to your Hugging Face API token"
-        model = timm.create_model("hf_hub:prov-gigapath/prov-gigapath", pretrained=True)
+        model = gigapath()
+        if not "HF_TOKEN" in os.environ:
+            checkpoints = torch.load(self.model_path, map_location="cpu")
+            model.load_state_dict(checkpoints, strict=True)
         model = model.to(self.device)
         model.eval()
         print("Giga-Path model built!")
         preprocess = self._get_transforms(embedding=self.tiler)
 
+        return model, preprocess
+
+    def ctranspath_tiler(self):
+        """ctranspath_tiler.
+        Encodes each tiles with a Swin ViTransformer model (swin_tiny_patch4_window7_224) proposed in:
+        Transformer-based unsupervised contrastive learning for histopathological image classification.
+        Code is largely inspiered by:
+        https://github.com/Xiyue-Wang/TransPath/blob/main/get_features_CTransPath.py
+        It is recommended to first try to extract features at 1.0mpp, and then try other magnifications
+
+        Embeddings are 768-dimensionnal.
+        """
+
+        model = ctranspath()
+        model.head = Identity()
+        checkpoints = torch.load(self.model_path, map_location="cpu")
+        model.load_state_dict(checkpoints["model"], strict=True)
+        model = model.to(self.device)
+        model.eval()
+        print("CtransPath model built!")
+        preprocess = self._get_transforms(embedding=self.tiler)
         return model, preprocess
 
     def simclr_tiler(self, param_tiles):
