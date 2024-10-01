@@ -28,7 +28,6 @@ path_outputs: /Users/mblons/dev/project/tipit/data/pathology/image/hes/tiles/
 #size: 224
 
 #tiler: gigapath 
-#HF_TOKEN: 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
 #model_path: /Users/mblons/dev/project/tipit/data/wsi_mil/models/gigapath/ckpts/pytorch_model.bin
 #level: 1
 #size: 224
