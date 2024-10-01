@@ -40,7 +40,7 @@ def load_model(model_path, device):
 
 
 def predict_test(model_path=None, data_path=None, data_table=None):
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "mps" if torch.cuda.is_available() else "cpu"
     model = load_model(model_path, device)
     args = model.args
     if data_path is not None:

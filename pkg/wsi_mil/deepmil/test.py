@@ -76,7 +76,7 @@ def fill_table(table, proba_preds, preds, ids):
 
 
 def main(model_path=None, w=False, rm_duplicates=True):
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "mps" if torch.cuda.is_available() else "cpu"
     model = load_model(model_path, device)
     args = model.args
     table = pd.read_csv(args.table_data)

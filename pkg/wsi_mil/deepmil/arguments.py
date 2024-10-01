@@ -165,7 +165,6 @@ def get_arguments(raw_args=None, train=True, config=None):
     )
 
     # Set device.
-    # args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     args.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     if args.nb_tiles == 0:
         args.constant_size = False
