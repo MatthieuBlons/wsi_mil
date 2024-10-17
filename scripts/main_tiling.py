@@ -8,7 +8,10 @@ from tqdm import tqdm
 from trackers import timetracker
 import copy
 import yaml
+import torch
 
+print("Working in conda env = " + os.environ["CONDA_PREFIX"])
+print(f"GPU is available = {torch.backends.mps.is_available()}")
 args, mask_args = get_arguments()
 timer = timetracker(name="tracker", verbose=1)
 if args.HF_TOKEN:

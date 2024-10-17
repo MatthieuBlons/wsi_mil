@@ -9,7 +9,6 @@ import numpy as np
 import openslide
 import useful_wsi as usi
 
-print(f"Working in conda env = {os.environ["CONDA_PREFIX"]}")
 if os.environ["CONDA_PREFIX"] == "/Users/mblons/miniforge3/envs/ctranspath-env":
     from .networks import ctranspath
 elif os.environ["CONDA_PREFIX"] == "/Users/mblons/miniforge3/envs/conch-env":
