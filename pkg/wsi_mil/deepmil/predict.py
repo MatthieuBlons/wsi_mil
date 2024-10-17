@@ -2,18 +2,14 @@
 """
 
 import numpy as np
-import seaborn as sns
 from sklearn import metrics
 import pandas as pd
 from glob import glob
 import torch
 import pandas as pd
-from torch import load
 import os
-from .arguments import get_arguments
 from .models import DeepMIL
-from .dataloader import EmbeddedWSI, Dataset_handler
-from collections.abc import MutableMapping
+from .dataloader import Dataset_handler
 from sklearn.preprocessing import Normalizer
 
 
@@ -23,7 +19,7 @@ def load_model(model_path, device):
     Args:
         model_path (str): path to the *.pt.tar model
     """
-    checkpoint = torch.load(model_path, map_location="cpu")
+    checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
     args = checkpoint["args"]
     args.device = device
     model = DeepMIL(

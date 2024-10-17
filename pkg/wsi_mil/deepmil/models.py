@@ -112,7 +112,7 @@ class EarlyStopping:
             else:
                 self.early_stop = True
         else:
-            print(loss, self.loss_min, " early stop!")
+            # print(loss, self.loss_min, " early stop!")
             self.is_best = True
             self.loss_min = loss
             self.counter = 0
@@ -121,7 +121,7 @@ class EarlyStopping:
     def save_checkpoint(self, state):
         torch.save(state, self.filename)
         if self.is_best:
-            print("SAVING BEST")
+            # print("SAVING BEST")
             shutil.copyfile(
                 self.filename, self.filename.replace(".pt.tar", "_best.pt.tar")
             )
@@ -281,11 +281,12 @@ class DeepMIL(Model):
             self.best_ref_metric = metrics[self.ref_metric]
             self.best_metrics = metrics
         if self.best_ref_metric * factor > metrics[self.ref_metric] * factor:
-            print(
-                "old acc : {}, new acc : {}".format(
-                    self.best_ref_metric, metrics[self.ref_metric]
+            if False:
+                print(
+                    "old acc : {}, new acc : {}".format(
+                        self.best_ref_metric, metrics[self.ref_metric]
+                    )
                 )
-            )
             self.best_ref_metric = metrics[self.ref_metric]
             self.best_metrics = metrics
 

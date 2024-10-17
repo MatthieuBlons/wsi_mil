@@ -1,7 +1,6 @@
 # %%
 # from .tile_functionnal import compute_distance
-from scipy.ndimage import rotate, distance_transform_bf
-from sklearn.gaussian_process.kernels import PairwiseKernel
+from scipy.ndimage import rotate
 import numpy as np
 import pickle
 import os
@@ -55,14 +54,15 @@ class TileSampler:
         indices = torch.randint(0, self.total_tiles, (nb_tiles,))
         return indices
 
-        indices = self.dpp.sample_exact_k_dpp(size=nb_tiles)
-        return indices
-
-        indices = self.pds.sample(nb_tiles)
-        return indices
-
     def all_sampler(self, nb_tiles):
         indices = list(range(self.total_tiles))
+        return indices
+
+    def random_strict_sampler(self, nb_tiles):
+        if self.total_tiles >= nb_tiles:
+            indices = self.random_sampler(nb_tiles)
+        else:
+            indices = self.all_sampler(nb_tiles)
         return indices
 
     def predmap_random_sampler(self, nb_tiles):

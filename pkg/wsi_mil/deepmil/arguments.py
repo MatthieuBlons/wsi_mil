@@ -26,7 +26,7 @@ def get_arguments(raw_args=None, train=True, config=None):
     )
     parser.add_argument("--table_data", type=str)
     parser.add_argument(
-        "--test_fold", type=int, help="Number of the fold used as a test"
+        "--test_fold", type=int, help="Identifier of the fold used as a test"
     )
     parser.add_argument(
         "--sampler",
