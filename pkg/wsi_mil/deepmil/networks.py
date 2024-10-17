@@ -70,7 +70,7 @@ class MultiHeadAttention(Module):
         x = torch.tanh(x)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = x.view((bs, nbt, self.num_heads, 1, self.dim_heads))
-        x = torch.matmul(x , self.atn_layer_2_weights) + self.atn_layer_2_bias # 4 scores.
+        x = torch.matmul(x, self.atn_layer_2_weights) + self.atn_layer_2_bias # 4 scores.
         x = x.view(bs, nbt, -1) # shape (bs, nbt, nheads) 
         return x
 

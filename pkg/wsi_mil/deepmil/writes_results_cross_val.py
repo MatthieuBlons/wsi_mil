@@ -145,16 +145,16 @@ def main(raw_args=None):
     rows = []
     for m in models:
         try:
-            state = torch.load(m, map_location="cpu")
+            state = torch.load(m, map_location="cpu", weights_only=False)
         except:
             continue
         args_m = state["args"]
-        references = extract_references(args_m)
+        references = extract_references(args_m) # dict {"test": t, "repeat": r}
         metrics = state["best_metrics"]
-        # metrics = convert_flatten(metrics) I flattened the metrics directly in the models.py file
-        references.update(metrics)
+
+        references.update(metrics) 
         rows.append(references)
-    
+
     ref_metric = (
         args_m.ref_metric
     )  # extract the reference from one of the models args (last one)
@@ -167,7 +167,7 @@ def main(raw_args=None):
         ref_metric=ref_metric,
         path=args.path,
         n_best=args.n_ensemble,
-    )
+    ) # selection is done according to best metric on validation 
     for param in models_params:
         copy_best_to_root(args.path, param)
     df.to_csv("all_results.csv", index=False)

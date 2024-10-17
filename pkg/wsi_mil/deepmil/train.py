@@ -1,13 +1,8 @@
 from .arguments import get_arguments
-from .dataloader import Dataset_handler
 from .models import DeepMIL
 import numpy as np
 import torch
-
-# For the sklearn warnings
-import warnings
-
-warnings.filterwarnings("always")
+from tqdm import tqdm
 
 
 def writes_metrics(writer, to_write, epoch):
@@ -28,15 +23,17 @@ def writes_metrics(writer, to_write, epoch):
 def train(model, dataloader):
     model.network.train()
     mean_loss = []
-    epobatch = 1 / len(dataloader)  # How many epochs per batch ?
+    epobatch = 1 / len(
+        dataloader
+    )  # How many epochs per batch ? # check if dataloader use all wsi even when lent(train_data)%batch_size!=0
     for input_batch, target_batch in dataloader:
         model.counter["batch"] += 1
         model.counter["epoch"] += epobatch
-        [scheduler.step(model.counter["epoch"]) for scheduler in model.schedulers]
-        loss = model.optimize_parameters(input_batch, target_batch)
+        loss = model.optimize_parameters(
+            input_batch, target_batch
+        )  # Feed the network with a batch and optimize the parameter
         mean_loss.append(loss)
     model.mean_train_loss = np.mean(mean_loss)
-    print("train_loss: {}".format(np.mean(mean_loss)))
 
 
 def val(model, dataloader):
@@ -50,7 +47,6 @@ def val(model, dataloader):
     to_write = model.flush_val_metrics()
     writes_metrics(model.writer, to_write, model.counter["epoch"])
     state = model.make_state()
-    print("mean val loss {}".format(np.mean(mean_loss)))
     model.update_learning_rate(model.mean_val_loss)
     model.early_stopping(model.args.sgn_metric * to_write[model.args.ref_metric], state)
 
@@ -59,8 +55,10 @@ def main(raw_args=None):
     args = get_arguments(raw_args=raw_args, train=True)
     model = DeepMIL(args=args, with_data=True)
     model.get_summary_writer()
+    progress = tqdm(
+        desc="Training", total=args.epochs, unit="epoch", initial=0, leave=True
+    )
     while model.counter["epoch"] < args.epochs:
-        print("Epochs {}/{}".format(round(model.counter["epoch"]), args.epochs))
         train(model=model, dataloader=model.train_loader)
         if args.use_val:
             val(model=model, dataloader=model.val_loader)
@@ -68,4 +66,13 @@ def main(raw_args=None):
             break
         if not args.use_val:
             torch.save(model.make_state(), "model_best.pt.tar")
+        if model.early_stopping.is_best:
+            best_epoch = model.counter["epoch"]
+            best_ref_metric = model.best_ref_metric
+        lrs = [scheduler.get_last_lr()[0] for scheduler in model.schedulers] 
+        progress.set_postfix_str(
+            f"lr={lrs[0]:.3}, train_loss={model.mean_train_loss:.4}, val_loss={model.mean_val_loss:.4}, BEST {model.ref_metric}={best_ref_metric:.2}, ON EPOCH={int(best_epoch)}",
+            refresh=True,
+        )
+        progress.update()
     model.writer.close()

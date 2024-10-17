@@ -26,7 +26,7 @@ def get_arguments(raw_args=None, train=True, config=None):
     )
     parser.add_argument("--table_data", type=str)
     parser.add_argument(
-        "--test_fold", type=int, help="Number of the fold used as a test"
+        "--test_fold", type=int, help="identifier of the fold used as a test"
     )
     parser.add_argument(
         "--sampler",
@@ -166,7 +166,9 @@ def get_arguments(raw_args=None, train=True, config=None):
 
     # Set device.
     args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    if args.nb_tiles == 0:
+    
+    # Set constant size flag
+    if args.nb_tiles == 0 or args.sampler == "random_strict":
         args.constant_size = False
     else:
         args.constant_size = True

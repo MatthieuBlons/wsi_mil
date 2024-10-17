@@ -65,7 +65,8 @@ class EmbeddedWSI(Dataset):
             self.stratif_dict,
             self.label_encoder,
         ) = self._make_db()
-        self.constant_size = args.nb_tiles != 0
+        # self.constant_size = args.nb_tiles != 0
+        self.constant_size = args.constant_size
 
     def _make_db(self):
         """_make_db.
@@ -148,7 +149,7 @@ class EmbeddedWSI(Dataset):
         :param mat: ndarray: matrix of the embedded wsi.
         return ndarray: matrix of the subsampled WSI.
         """
-        if self.use_train & self.constant_size:
+        if self.use_train and self.args.nb_tiles != 0:
             sampler = self.sampler_dict[path]
             indices = getattr(sampler, self.args.sampler + "_sampler")(
                 nb_tiles=self.args.nb_tiles
@@ -163,7 +164,9 @@ class EmbeddedWSI(Dataset):
         return mat
 
 
-def collate_variable_size(batch):
+def collate_variable_size(
+    batch,
+):  # if constant_size is False we have to process a batch as a list of tensors (of different tilesxfeatures sizes)
     data = [item[0].unsqueeze(0) for item in batch]
     target = [torch.FloatTensor([item[1]]) for item in batch]
     return [data, target]
@@ -292,13 +295,13 @@ class Dataset_handler:
         """
         if no_strat_sampling:
             weights = [1 for x in labels]
-            print("ooook")
+            # print("no sampling strat will be used")
         elif wr_whole_label:
             cc = Counter(labels)
             weights = [1 / cc[x] for x in labels]
-            print("not_ok")
+            # print("sampling conditioned by the numer of occurrences for each classes")
         else:
-            print("not_ok")
+            # print("sampling conditioned by the expectation of each class w.r.t the target variable")
             table = self.dataset_train.table_data
             target = self.args.target_name
             target_set = list(set(table[target].values))
