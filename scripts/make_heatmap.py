@@ -39,7 +39,7 @@ if args.consensus:
 else:
     namedir = os.path.basename(args.model).split(".pt.tar")[0]
 out = os.path.join(
-    os.path.dirname(args.models_path), "summaries_{}".format(namedir), "heatmap"
+    os.path.dirname(args.models_path), "summaries_{}".format(namedir), "heatmaps"
 )
 os.makedirs(out, exist_ok=True)
 
