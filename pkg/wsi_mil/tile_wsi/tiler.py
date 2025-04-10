@@ -1,13 +1,13 @@
 from torchvision import transforms
 from torch.nn import Identity
 import torch
-from torchvision.models import resnet18
 import pandas as pd
 import pickle
 import os
 import numpy as np
 import openslide
-import useful_wsi as usi
+from tiatoolbox.tools.stainnorm import MacenkoNormalizer
+from PIL import Image
 
 
 if os.environ["CONDA_PREFIX"] == "/cluster/CBIO/home/mblons/miniconda3/envs/ctranspath":
@@ -40,7 +40,7 @@ class ImageTiler:
                 .size: dimension in pixel of the extracted tiles.
                 .auto_mask: 0 or 1. If 1, automatically extracts relevant
                     portions of the WSI
-                .tiler: type of tiling. available: simple | imagenet | moco
+                .tiler: type of tiling. available: simple | imagenet | ciga (2 fix) | moco  | uni (tile) | conch (tile) | ctranspath (tile) | gigapath (tile) | simclr (not implemented)
                 .path_outputs: str, root of the paths where are stored the outputs.
                 .model_path: str, when using moco tiler.
                 .mask_tolerance: minimum percentage of mask on a tile for selection.
@@ -53,6 +53,9 @@ class ImageTiler:
         self.max_nb_tiles = args.max_nb_tiles
         self.infomat = None
         self.tiler = args.tiler
+        self.norm_target = args.norm_target
+        if self.norm_target:
+            self._get_normalizer(args.norm_level)
         self.model_path = args.model_path
         self.img_tiler = getattr(self, self.tiler + "_tiler")
         if self.tiler != "simple":
@@ -75,7 +78,6 @@ class ImageTiler:
             self.slide.level_dimensions[self.mask_level]
         )
         self.rgb_img = np.array(self.rgb_img)[:, :, :3]
-        self.outpath = self._set_out_path()
 
     def _get_mask_info(self, mask_args):
         self.auto_mask = mask_args.auto_mask
@@ -120,6 +122,19 @@ class ImageTiler:
             )
         return mask_function
 
+    def _get_normalizer(self, level): # does fitting at the tilling level is necessary? why not at the mask level to save time?
+        filename, _ = os.path.splitext(self.norm_target)
+        tag = os.path.basename(filename)
+        norm = MacenkoNormalizer()
+        target_slide = openslide.open_slide(self.norm_target)
+        target_array = target_slide.get_thumbnail(
+            target_slide.level_dimensions[level]
+        )
+        target_array = np.array(target_array)[:, :, :3]
+        norm.fit(target_array)
+        self.normalizer = norm
+        print(f"Macenko Normalizer was successfully fitted to {tag}!")
+
     def tile_image(self):
         """tile_image.
         Main function of the class. Tiles the WSI and writes the outputs.
@@ -134,18 +149,23 @@ class ImageTiler:
             patch_size=self.size,
             mask_tolerance=self.mask_tolerance,
         )
-        if self.make_info:
-            self._make_infodocs(param_tiles)
-            self._make_visualisations(param_tiles)
+        if param_tiles:
+            self.outpath = self._set_out_path()
 
-        if self.tiler == "simple":
-            self.img_tiler(param_tiles)
-        else:
-            mat = self._forward_pass_WSI(self.model, param_tiles, self.preprocess)
-            np.save(
-                os.path.join(self.outpath["tiles"], f"{self.name_wsi}_embedded.npy"),
-                mat,
-            )
+            if self.make_info:
+                self._make_infodocs(param_tiles)
+                self._make_visualisations(param_tiles)
+
+            if self.tiler == "simple":
+                self.img_tiler(param_tiles)
+            else:
+                mat = self._forward_pass_WSI(self.model, param_tiles, self.preprocess)
+                np.save(
+                    os.path.join(
+                        self.outpath["tiles"], f"{self.name_wsi}_embedded.npy"
+                    ),
+                    mat,
+                )
 
     def _make_visualisations(self, param_tiles):
         """_make_visualisations.
@@ -261,7 +281,10 @@ class ImageTiler:
         tiles = []
         for o, para in enumerate(param_tiles):
             image = get_image(slide=self.slide, para=para, numpy=False)
-            image = image.convert("RGB")  # NCHW
+            image = image.convert("RGB")
+            if self.norm_target:  # change following lines to a normalize function
+                image = self.normalizer.transform(np.array(image))
+                image = Image.fromarray(image, mode="RGB")
             image = preprocess(image).unsqueeze(0)
             image = image.to(self.device)
             with torch.no_grad():
@@ -324,13 +347,6 @@ class ImageTiler:
                 ]
             )
 
-        elif embedding == "ciga":
-            trans = transforms.Compose(
-                [
-                    transforms.ToTensor(),
-                    transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
-                ]
-            )
         else:
             raise KeyError(embedding)
 
@@ -349,6 +365,10 @@ class ImageTiler:
             ]
         for o, para in enumerate(param_tiles):
             patch = get_image(slide=self.path_wsi, para=para, numpy=False)
+            if self.norm_target:
+                patch = np.array(patch.convert("RGB"))
+                patch = self.normalizer.transform(patch)
+                patch = Image.fromarray(patch, mode="RGB")
             path_tile = os.path.join(self.outpath["tiles"], f"tile_{o}.png")
             patch.save(path_tile)
             del patch
@@ -366,48 +386,6 @@ class ImageTiler:
         preprocess = self._get_transforms(embedding=self.tiler)
 
         return model, preprocess
-
-    def ciga_tiler(self, param_tiles):
-        def load_model_weights(model, weights):
-            model_dict = model.state_dict()
-            weights = {k: v for k, v in weights.items() if k in model_dict}
-            if weights == {}:
-                print("No weight could be loaded..")
-            model_dict.update(weights)
-            model.load_state_dict(model_dict)
-            return model
-
-        model = resnet18()
-        state = torch.load(self.model_path, map_location="cpu")
-        state_dict = state["state_dict"]
-        for key in list(state_dict.keys()):
-            state_dict[key.replace("model.", "").replace("resnet.", "")] = (
-                state_dict.pop(key)
-            )
-        model = load_model_weights(model, state_dict)
-        model.fc = Identity()
-        model = model.to(self.device)
-        model.eval()
-        print("Ciga model built!")
-        preprocess = self._get_transforms(embedding=self.tiler)
-
-        tiles = []
-        # param_tiles = np.array(param_tiles)[np.random.choice(range(len(param_tiles)), min(4000,len(param_tiles)), replace=False)]
-        for o, para in enumerate(param_tiles):
-            image = usi.get_image(slide=self.slide, para=para, numpy=False)
-            image = image.convert("RGB")
-            if self.from_0:
-                image = image.resize(self.size)
-            image = preprocess(image).unsqueeze(0)
-            image = image.to(self.device)
-            with torch.no_grad():
-                t = model(image).squeeze()
-            tiles.append(t.cpu().numpy())
-        mat = np.vstack(tiles)
-        np.save(
-            os.path.join(self.path_outputs, "{}_embedded.npy".format(self.name_wsi)),
-            mat,
-        )
 
     def moco_tiler(self):
         """moco_tiler.
@@ -477,7 +455,9 @@ class ImageTiler:
         """
         model = gigapath()
         if not "HF_TOKEN" in os.environ:
-            checkpoints = torch.load(self.model_path, map_location="cpu", weights_only=True)
+            checkpoints = torch.load(
+                self.model_path, map_location="cpu", weights_only=True
+            )
             model.load_state_dict(checkpoints, strict=True)
         model = model.to(self.device)
         model.eval()
