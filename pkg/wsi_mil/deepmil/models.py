@@ -296,7 +296,7 @@ class DeepMIL(Model):
         Once the forward pass for validation ends, computes the metrics, stores
         the best ones according to the ref metric.
         Metrics computed : Balanced accuracy, accuracy, precision (macro-avg),
-        recall, f1-score, roc_auc (when N_classes < 3), epochs, mean_train_loss,
+        recall, f1-score, roc_auc (when N_classes < 2), epochs, mean_train_loss,
         mean_val_loss.
 
         :return dict, key (name of the metric), value (value of the metric).
