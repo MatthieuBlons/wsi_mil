@@ -122,11 +122,19 @@ def copy_best_to_root(path, param):
     and the config file in the root path of the experiment.
     if cross_val : just testing a single config. therefore no copy to do
     """
+    out_path = os.path.join(path, "model_best_events")
+    out_path = os.path.abspath(out_path)
+    os.makedirs(out_path, exist_ok=True)
     for p in param:
         t, r = p
         model_path = os.path.join(path, "test_{}/rep_{}/model_best.pt.tar".format(t, r))
         model_path = os.path.abspath(model_path)
         shutil.copy(model_path, "model_best_test_{}_repeat_{}.pt.tar".format(t, r))
+        events_path = os.path.join(path, "test_{}/rep_{}/runs/".format(t, r))
+        events_path = os.path.abspath(events_path)
+        shutil.copytree(
+            events_path, os.path.join(out_path, "events_test_{}_repeat_{}".format(t, r))
+        )
 
 
 def main(raw_args=None):
@@ -149,10 +157,10 @@ def main(raw_args=None):
         except:
             continue
         args_m = state["args"]
-        references = extract_references(args_m) # dict {"test": t, "repeat": r}
+        references = extract_references(args_m)  # dict {"test": t, "repeat": r}
         metrics = state["best_metrics"]
 
-        references.update(metrics) 
+        references.update(metrics)
         rows.append(references)
 
     ref_metric = (
@@ -167,7 +175,7 @@ def main(raw_args=None):
         ref_metric=ref_metric,
         path=args.path,
         n_best=args.n_ensemble,
-    ) # selection is done according to best metric on validation 
+    )  # selection is done according to best metric on validation
     for param in models_params:
         copy_best_to_root(args.path, param)
     df.to_csv("all_results.csv", index=False)
