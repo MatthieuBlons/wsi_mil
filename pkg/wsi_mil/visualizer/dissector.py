@@ -2,24 +2,16 @@ from wsi_mil.deepmil.predict import load_model
 from matplotlib.colors import Normalize
 from scipy.special import softmax
 from openslide import open_slide
-from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
-import skimage
 from skimage import filters
-import matplotlib.patches as patches
 import torch
-from argparse import Namespace
-from ..tile_wsi.utils import get_image, get_x_y_from_0, get_size, get_whole_image
 import matplotlib.pyplot as plt
 from glob import glob
-import yaml
-from copy import copy
 import numpy as np
 import pickle
 import pandas as pd
 from .model_hooker import HookerMIL
-from .utils import make_background_neutral, add_titlebox, set_axes_color
 from pathlib import Path
 import os
 from scipy.ndimage import zoom
@@ -29,7 +21,9 @@ from PIL import Image
 class BaseVisualizer(ABC):
     def __init__(self, model, path_emb=None, path_raw=None):
         ## Model loading
-        self.device = torch.device("cuda" if torch.backends.mps.is_available() else "cpu") # change 
+        self.device = torch.device(
+            "cuda" if torch.backends.mps.is_available() else "cpu"
+        )  # change
         self.model = load_model(model, self.device)
         self.label_encoder = self.model.label_encoder
 
@@ -235,7 +229,7 @@ class TileSeeker(BaseVisualizer):
         """store_best.
         decides if we have to store the tile, according the final activation value.
 
-        :param out: out of a forward parss
+        :param out: out of a forward pass
         :param info: info dictionnary of the WSI
         :param min_prob: bool:
         maximiser proba -> prendre les derniers éléments de indices_best (plus grand au plus petit)

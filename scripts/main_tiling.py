@@ -9,6 +9,9 @@ from trackers import timetracker
 import copy
 import yaml
 import torch
+import warnings
+
+warnings.filterwarnings("ignore")
 
 print("Working in conda env = " + os.environ["CONDA_PREFIX"])
 print(f"Cuda is available = {torch.cuda.is_available()}")
@@ -30,9 +33,11 @@ os.chdir(it.path_outputs)
 with open("config.yaml", "w") as config_file:
     config_file.write(config_str)
 # Tile
+# A single wsi
 if os.path.isfile(args.path_wsi):
     it._load_slide(args.path_wsi, mask_args)
     it.tile_image()
+# A set of wsis
 else:
     dirs = []
     extensions = set([".ndpi", ".svs", ".tif"])
@@ -50,9 +55,10 @@ else:
     timer.tic()
     for f in iterfile:
         name_wsi, _ = os.path.splitext(os.path.basename(f))
-        iterfile.set_postfix_str(f"Processing slide with ID = {name_wsi}", refresh=True)
         it._load_slide(f, mask_args)
         it.tile_image()
+        iterfile.set_postfix_str(f"Processing slide with ID = {name_wsi}", refresh=True)
+        iterfile.update()
     print(f"Done!")
     timer.toc()
 

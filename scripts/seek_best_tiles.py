@@ -4,6 +4,7 @@ import pickle
 from argparse import ArgumentParser
 import numpy as np
 import os
+from trackers import timetracker
 
 parser = ArgumentParser()
 parser.add_argument("--model", type=str)
@@ -14,7 +15,7 @@ parser.add_argument("--only_test", action="store_true")
 parser.add_argument("--consensus", action="store_true")
 
 args = parser.parse_args()
-
+timer = timetracker(name="tracker", verbose=1)
 if args.consensus:
     models = glob(os.path.join(args.model, "model_rep_*_best.pt.tar*"))
     if len(models) == 0:
@@ -35,9 +36,10 @@ else:
         max_per_slides=args.max_per_slides,
         att_thres=300,  # 300 best tiles per WSI based on attention score
     )
-
+timer.tic()
 ts.forward_all()
 ts.extract_images()
+timer.toc()
 if args.consensus:
     namedir = "consensus"
 else:
@@ -67,3 +69,4 @@ for o, n in enumerate(ts.store_tile):
     np.save(os.path.join(out_encoded, str(var) + "_scores.npy"), scores)
     with open(os.path.join(out_encoded, str(var) + "_infos.pickle"), "wb") as f:
         pickle.dump(ts.store_info[o], f)
+print("Done!")

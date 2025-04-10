@@ -1,5 +1,5 @@
 """
-Horrible le systeme de soft voting,  refaire entièrement quand fini
+Horrible le systeme de soft voting, refaire entièrement quand fini
 """
 
 from .test import main as main_test
@@ -11,6 +11,9 @@ import numpy as np
 from glob import glob
 import os
 import pandas as pd
+import warnings
+
+warnings.filterwarnings("ignore")
 
 
 def extract_test_repeat(path):
@@ -161,6 +164,7 @@ def main(raw_args=None):
         if res["test"] not in final_res.keys():
             final_res[res["test"]] = []
         final_res[res["test"]].append(res)
+
     df_res, result_table = soft_voting(final_res, table=table)
     mean = df_res.mean(axis=0).to_frame().transpose()
     std = df_res.std(axis=0).to_frame().transpose()

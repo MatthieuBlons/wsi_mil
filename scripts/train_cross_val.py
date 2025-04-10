@@ -7,14 +7,20 @@ import datetime
 import shutil
 from argparse import ArgumentParser
 import yaml
+import torch
+from trackers import timetracker
 
 # For the sklearn warnings
 import warnings
 
 warnings.filterwarnings("ignore")
 
-
-## Where put the master table ? why not in config. see
+print("Working in conda env = " + os.environ["CONDA_PREFIX"])
+print(f"Cuda is available = {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    print(f"Device = {torch.cuda.get_device_name(0)}")
+else:
+    print("Device = cpu")
 
 parser = ArgumentParser()
 parser.add_argument("--out", type=str, help="Path where will be stored the outputs")
@@ -32,9 +38,8 @@ parser.add_argument(
     help="Number of model to ensemble. selected wrt validation results.",
     default=1,
 )
-
 args = parser.parse_args()
-
+timer = timetracker(name="tracker", verbose=1)
 if args.name is None:
     args.name = datetime.date.today().strftime("%Y_%m_%d")
 out = os.path.abspath(args.out)
@@ -51,8 +56,7 @@ tests = len(set(table["test"].values))
 if "nb_tiles" in dic:
     nb_tiles = dic["nb_tiles"]
     print(f"will train with nb_tiles = {nb_tiles}")
-else:
-    print(f"will train with nb_tiles = {args.nb_tiles}")
+timer.tic()
 for test in range(tests):
     for rep in range(args.rep):
         print(f"Working on: rep={rep+1}/{args.rep}, fold={test+1}/{tests}")
@@ -68,9 +72,10 @@ for test in range(tests):
         os.makedirs(wd, exist_ok=True)
         os.chdir(wd)
         train(raw_args=raw_args)
-
+timer.toc()
 # Root of experiment.
 os.chdir(out)
 raw_args = ["--n_ensemble", f"{args.n_ensemble}"]
 writes_validation_results(raw_args)
 writes_test_results([])
+print(f"Done!")
