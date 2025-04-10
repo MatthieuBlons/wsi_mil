@@ -75,6 +75,19 @@ def get_arguments():
         help="maximum number of tiles to select uniformly. If None, takes all the tiles.",
         default=None,
     )
+    parser.add_argument(
+        "--norm_target",
+        type=str,
+        help="path to the wsi target which staining appearance will be use to normalize all other patches",
+        default=None,
+    )
+
+    parser.add_argument(
+        "--norm_level",
+        type=int,
+        help="scale of the staining appearance. negatives indicate counting levels from the end (slide.level_count)",
+        default=6,
+    )
 
     args = parser.parse_args()
     # If there is a config file, we populate args with it (still keeping the default arguments)
