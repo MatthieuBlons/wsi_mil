@@ -69,7 +69,7 @@ def main(raw_args=None):
         if model.early_stopping.is_best:
             best_epoch = model.counter["epoch"]
             best_ref_metric = model.best_ref_metric
-        lrs = [scheduler.get_last_lr()[0] for scheduler in model.schedulers] 
+        lrs = [scheduler._last_lr[0] for scheduler in model.schedulers]
         progress.set_postfix_str(
             f"lr={lrs[0]:.3}, train_loss={model.mean_train_loss:.4}, val_loss={model.mean_val_loss:.4}, BEST {model.ref_metric}={best_ref_metric:.2}, ON EPOCH={int(best_epoch)}",
             refresh=True,
