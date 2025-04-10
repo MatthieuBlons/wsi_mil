@@ -3,12 +3,13 @@ from sklearn.preprocessing import LabelEncoder
 import pandas as pd
 import numpy as np
 import torch
-from ..tile_wsi.sampler import TileSampler
+from ..tile_wsi.sampler import TileSampler, H5TileSampler
 from functools import reduce
 from collections import Counter
 from sklearn.model_selection import StratifiedShuffleSplit
 from collections import Counter
 import os
+import h5py
 
 
 class EmbeddedWSI(Dataset):
@@ -35,7 +36,7 @@ class EmbeddedWSI(Dataset):
         args : Namespace
             must contain :
                 * table_data, str, path to the data info (.csv), with 'ID' column containing name of wsi.
-                * wsi, str, path to the the output folder of a tile_image process. #embedded WSI (.npy) with name matching the 'ID' of table_data
+                * wsi, str, path to the the output folder of a tile_image process. #embedded WSI (.npy or .h5) with name matching the 'ID' of table_data
                 * target_name, str, name of the target variable (name of column in table_data)
                 * device, torch.device
                 * test_fold, int, number of the fold used as test.
@@ -49,7 +50,6 @@ class EmbeddedWSI(Dataset):
         self.label_encoder = None
         self.args = args
         self.embeddings = os.path.join(args.wsi, "mat_pca")
-        #        self.ipca = load(os.path.join(args.wsi, 'pca', 'pca_tiles.joblib'))
         self.info = os.path.join(args.wsi, "info")
         self.use_train = use_train
         self.predict = predict
@@ -164,6 +164,166 @@ class EmbeddedWSI(Dataset):
         return mat
 
 
+# Make a base class EmbeddedWSI
+# Make H5EmbeddedWSI inherite from the base class
+class H5EmbeddedWSI(Dataset):
+    """
+    DO NOT PRELOAD DATASET ON RAM. may be slow.
+    OTHER SOLUTION THAT MAY WORK FASTER : write each tile as a different file. Then load each of them and
+    concatenate them to create a WSI.
+    Implements a dataloader for already coded WSI.
+    Each WSI is therefore a .npy array of size NxF with N the number of tiles
+    of the WSI and F the number of features of the embeding space (usually 2048).
+    Note: no transform method because this dataset is using numpy array as inputs.
+
+    The table_data (labels of the different files) may have:
+        * an ID column with the name of the images in it (without the extension)
+        * a $args.target_name column, of course
+        * a test columns, stating the test_fold number of each image.
+    """
+
+    def __init__(self, args, use_train, predict=False):
+        """Initialises the MIL model.
+
+        Parameters
+        ----------
+        args : Namespace
+            must contain :
+                * table_data, str, path to the data info (.csv), with 'ID' column containing name of wsi.
+                * wsi, str, path to the the output folder of a tile_image process. #embedded WSI (.h5) with name matching the 'ID' of table_data
+                * target_name, str, name of the target variable (name of column in table_data)
+                * device, torch.device
+                * test_fold, int, number of the fold used as test.
+                * feature_depth, int, number of dimension of the embedded space to keep. (0<x<2048)
+                * nb_tiles, int, if 0 : take all the tiles, will need custom collate_fn, else randomly picks $nb_tiles in each WSI.
+                * train, bool, if True : extract the data s.t fold != test_fold, if False s.t. fold == testse_fold
+                * sampler, str: tile sampler. dispo : random_sampler | random_biopsie
+        """
+        super(H5EmbeddedWSI, self).__init__()
+        self.label_encoder = None
+        self.args = args
+        self.embeddings = args.wsi
+        self.use_train = use_train
+        self.predict = predict
+        self.table_data = (
+            pd.read_csv(args.table_data)
+            if isinstance(args.table_data, str)
+            else args.table_data
+        )
+        (
+            self.files,
+            self.target_dict,
+            self.sampler_dict,
+            self.stratif_dict,
+            self.label_encoder,
+        ) = self._make_db()
+        # self.constant_size = args.nb_tiles != 0
+        self.constant_size = args.constant_size
+
+    def _make_db(self):
+        """_make_db.
+        Creates the dataset. Namely, populates the files list
+        with the selected WSI.
+        Populates also 3 dictionnary, with keys the elements of the files list
+        and values :
+            * target_dict : their target values
+            * stratif_dict : their stratif values (present in the table_data).
+            * sampler_dict : their associated TileSampler object.
+
+        :return [files, target_dict, sampler_dict, stratif_dict, label_encoder]
+        """
+        table, label_encoder = self.transform_target()
+        target_dict = dict()  # Key = path to the file, value=target
+        sampler_dict = dict()
+        stratif_dict = dict()
+        names = table["ID"].values
+        files_filtered = []
+        for name in names:
+            filepath = os.path.join(self.embeddings, name + ".h5")
+            if os.path.exists(filepath):
+                if self._is_in_db(name):
+                    files_filtered.append(filepath)
+                    target_dict[filepath] = np.float32(
+                        table[table["ID"] == name]["target"].values[0]
+                    )
+                    stratif_dict[filepath] = table[table["ID"] == name][
+                        "stratif"
+                    ].values[0]
+
+                    sampler_dict[filepath] = H5TileSampler(
+                        args=self.args, wsi_path=filepath
+                    )
+        return files_filtered, target_dict, sampler_dict, stratif_dict, label_encoder
+
+    def transform_target(self):
+        """Adds to table a numerical encoding of the target.
+        Each class is a natural number. Good format for classif using nn.CrossEntropy
+        New columns is named "target"
+        """
+        table = self.table_data
+        targets = table[self.args.target_name].values
+        label_encoder = LabelEncoder().fit(targets)
+        table["target"] = label_encoder.transform(targets)
+        self.table_data = table
+        return table, label_encoder
+
+    def get_embeddings(self, path):
+        with h5py.File(path, "r") as f:
+            attrs = dict(f["features"].attrs)
+            feats = f["features"][:]
+        return attrs, feats
+
+    def _is_in_db(self, name):
+        """Do we keep the file in the dataset ?"""
+        table = self.table_data
+        is_in_db = True
+        if "test" in table.columns and (not self.predict):
+            is_in_train = (
+                table[table["ID"] == name]["test"] != self.args.test_fold
+            ).values[
+                0
+            ]  # "keep if i'm not test"
+            is_in_test = (
+                table[table["ID"] == name]["test"] == self.args.test_fold
+            ).values[0]
+            is_in_db = is_in_train if self.use_train else is_in_test
+        return is_in_db
+
+    def __len__(self):
+        return len(self.files)
+
+    def __getitem__(self, idx):
+        path = self.files[idx]
+        _, feats = self.get_embeddings(path)
+        mat = feats[:, : self.args.feature_depth]
+        mat = self._select_tiles(path, mat)
+        mat = torch.from_numpy(mat).float()  # ToTensor
+        target = self.target_dict[path]
+        return mat, target
+
+    def _select_tiles(self, path, mat):
+        """_select_tiles.
+        Samples the tiles in the WSI.
+
+        :param path: str: path of the current WSI.
+        :param mat: ndarray: matrix of the embedded wsi.
+        return ndarray: matrix of the subsampled WSI.
+        """
+        if self.use_train and self.args.nb_tiles != 0:
+            sampler = self.sampler_dict[path]
+            indices = getattr(sampler, self.args.sampler + "_sampler")(
+                nb_tiles=self.args.nb_tiles
+            )
+            mat = mat[indices, :]
+        else:
+            sampler = self.sampler_dict[path]
+            indices = getattr(sampler, self.args.val_sampler + "_sampler")(
+                nb_tiles=self.args.nb_tiles
+            )
+            mat = mat[indices, :]
+        return mat
+
+
 def collate_variable_size(
     batch,
 ):  # if constant_size is False we have to process a batch as a list of tensors (of different tilesxfeatures sizes)
@@ -181,7 +341,7 @@ class Dataset_handler:
 
     """
 
-    def __init__(self, args, predict=False):
+    def __init__(self, args, predict=False, format="array"):
         """
         Generates a validation dataset and a training dataset.
         If predict=True, the training dataset contains all the dataset.
@@ -190,6 +350,7 @@ class Dataset_handler:
         self.use_val = args.use_val
         self.num_class = args.num_class
         self.predict = predict
+        self.format = format
         self.num_workers = args.num_workers
         self.dataset_train = self._get_dataset(use_train=True)
         self.dataset_test = self._get_dataset(use_train=False)
@@ -235,7 +396,14 @@ class Dataset_handler:
         testing fold, else of the training folds.
         :return EmbeddedWSI
         """
-        dataset = EmbeddedWSI(self.args, use_train=use_train, predict=self.predict)
+        if self.format == "array":
+            dataset = EmbeddedWSI(self.args, use_train=use_train, predict=self.predict)
+        elif self.format == "h5":
+            dataset = H5EmbeddedWSI(
+                self.args, use_train=use_train, predict=self.predict
+            )
+        else:
+            raise ValueError("Invalid wsi embedded format")
         return dataset
 
     def _get_sampler(self, dataset, use_val=True):

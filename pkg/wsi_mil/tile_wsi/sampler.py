@@ -5,6 +5,7 @@ import numpy as np
 import pickle
 import os
 import torch
+import h5py
 
 
 class TileSampler:
@@ -124,3 +125,42 @@ class TileSampler:
         tile_indices = np.random.choice(rotated_infomat[sample], nb_tiles)
         tile_indices = tile_indices.astype(int)
         return tile_indices
+
+
+class H5TileSampler:
+    def __init__(self, args, wsi_path, info_folder):
+        """
+        Initialise a tile sampler object. Given a WSI, this sampler will automatize
+        different ways of selecting tiles inside it.
+        This object is adapted to all types of WSI representations, as its sampling methods
+        return indices of tiles instead of tiles themselves.
+
+        Args:
+            wsi_path (str): path to the whole slide image  ???(ndpi, svs ...)??? -> not embeddings format
+            info_folder (str): path to the info_folder of the dataset -and not of the slide-.
+        """
+        self.name_wsi, _ = os.path.splitext(os.path.basename(wsi_path))
+        self.path_wsi = wsi_path
+        _, embedded_wsi = self.read_h5(wsi_path)
+        self.total_tiles = embedded_wsi.shape[0]
+
+    def random_sampler(self, nb_tiles):
+        indices = torch.randint(0, self.total_tiles, (nb_tiles,))
+        return indices
+
+    def all_sampler(self, nb_tiles):
+        indices = list(range(self.total_tiles))
+        return indices
+
+    def random_strict_sampler(self, nb_tiles):
+        if self.total_tiles >= nb_tiles:
+            indices = self.random_sampler(nb_tiles)
+        else:
+            indices = self.all_sampler(nb_tiles)
+        return indices
+
+    def read_h5(self, path):
+        with h5py.File(path, "r") as f:
+            attrs = dict(f["features"].attrs)
+            feats = f["features"][:]
+        return attrs, feats
